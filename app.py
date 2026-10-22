@@ -1,3 +1,5 @@
+from fastapi.middleware.cors import CORSMiddleware
+
 import os
 from pathlib import Path
 from typing import Literal
@@ -13,6 +15,14 @@ FEATURES = ["age", "hypertension", "heart_disease", "bmi", "hba1c_level", "gluco
 model = joblib.load(MODEL_PATH)
 
 app = FastAPI(title="Diabetes v1.2 Research Prediction API", version=MODEL_VERSION)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["POST", "GET", "OPTIONS"],
+    allow_headers=["Content-Type"],
+)
+
 
 class PredictionRequest(BaseModel):
     age: float = Field(..., ge=0, le=120)
@@ -62,4 +72,30 @@ def predict(payload: PredictionRequest, authorization: str | None = Header(defau
         model_version=MODEL_VERSION,
         model_type="HistGradientBoostingClassifier trained on output_data.xlsx",
         warning="Research and educational result only; not a medical diagnosis and not for insulin or medication decisions.",
+    )
+
+@app.post("/public-predict", response_model=PredictionResponse)
+def public_predict(payload: PredictionRequest):
+    values = np.array([[
+        payload.age,
+        payload.hypertension,
+        payload.heart_disease,
+        payload.bmi,
+        payload.hba1c_level,
+        payload.glucose,
+    ]], dtype=float)
+
+    probability = float(model.predict_proba(values)[0, 1])
+    prediction = int(probability >= 0.5)
+
+    return PredictionResponse(
+        probability=round(probability, 6),
+        prediction=prediction,
+        risk_level=risk_level(probability),
+        model_version=MODEL_VERSION,
+        model_type="HistGradientBoostingClassifier trained on output_data.xlsx",
+        warning=(
+            "Public educational research demonstration only; "
+            "not a medical diagnosis and not for insulin or medication decisions."
+        ),
     )
